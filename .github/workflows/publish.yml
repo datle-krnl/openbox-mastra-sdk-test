@@ -111,15 +111,15 @@ jobs:
       - name: Run CI validation
         run: npm run ci:check
 
-      - name: Verify package tarball
-        run: npm run pack:check
-
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: release-coverage-lcov
           path: coverage/lcov.info
           if-no-files-found: error
+
+      - name: Verify package tarball
+        run: npm run pack:check
 
   release-security:
     name: Release Security
@@ -158,6 +158,7 @@ jobs:
             --exit-code 0
 
       - name: Run Trivy filesystem scan for SARIF
+        id: trivy_scan
         continue-on-error: true
         shell: bash
         run: |
@@ -170,7 +171,7 @@ jobs:
             --include-dev-deps \
             --format sarif \
             --output trivy-release-results.sarif \
-            --exit-code 0
+            --exit-code 1
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
@@ -188,6 +189,13 @@ jobs:
           path: trivy-release-results.sarif
           if-no-files-found: error
 
+      - name: Fail workflow when Trivy scan finds issues
+        if: always() && steps.trivy_scan.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Trivy scan found HIGH/CRITICAL issues."
+          exit 1
+
       - name: Install Gitleaks
         shell: bash
         run: |
@@ -200,6 +208,7 @@ jobs:
           gitleaks version
 
       - name: Run Gitleaks SARIF scan
+        id: gitleaks_scan
         continue-on-error: true
         shell: bash
         run: |
@@ -226,6 +235,13 @@ jobs:
           name: gitleaks-release-results
           path: gitleaks-release-results.sarif
           if-no-files-found: error
+
+      - name: Fail workflow when Gitleaks scan finds leaks
+        if: always() && steps.gitleaks_scan.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Gitleaks scan found secrets."
+          exit 1
 
   release-sonarqube:
     name: Release SonarQube

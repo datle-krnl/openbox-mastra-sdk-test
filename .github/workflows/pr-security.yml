@@ -57,6 +57,7 @@ jobs:
             --exit-code 0
 
       - name: Run Trivy filesystem scan for SARIF
+        id: trivy_scan
         continue-on-error: true
         shell: bash
         run: |
@@ -69,7 +70,7 @@ jobs:
             --include-dev-deps \
             --format sarif \
             --output trivy-fs-results.sarif \
-            --exit-code 0
+            --exit-code 1
 
       - name: Upload Trivy SARIF to GitHub Security
         if: always()
@@ -86,6 +87,13 @@ jobs:
           name: trivy-fs-results
           path: trivy-fs-results.sarif
           if-no-files-found: error
+
+      - name: Fail workflow when Trivy scan finds issues
+        if: always() && steps.trivy_scan.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Trivy scan found HIGH/CRITICAL issues."
+          exit 1
 
   gitleaks:
     name: Gitleaks
@@ -109,6 +117,7 @@ jobs:
           gitleaks version
 
       - name: Run Gitleaks SARIF scan
+        id: gitleaks_scan
         continue-on-error: true
         shell: bash
         run: |
@@ -135,3 +144,10 @@ jobs:
           name: gitleaks-results
           path: gitleaks-results.sarif
           if-no-files-found: error
+
+      - name: Fail workflow when Gitleaks scan finds leaks
+        if: always() && steps.gitleaks_scan.outcome == 'failure'
+        shell: bash
+        run: |
+          echo "Gitleaks scan found secrets."
+          exit 1
