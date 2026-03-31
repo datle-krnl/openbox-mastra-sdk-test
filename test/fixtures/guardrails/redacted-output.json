@@ -1,0 +1,11 @@
+{
+  "guardrails_result": {
+    "input_type": "activity_output",
+    "redacted_input": {
+      "confirmationId": "[redacted]",
+      "status": "sent"
+    },
+    "validation_passed": true
+  },
+  "verdict": "allow"
+}

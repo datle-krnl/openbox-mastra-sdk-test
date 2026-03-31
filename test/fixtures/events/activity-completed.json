@@ -1,0 +1,24 @@
+{
+  "activity_input": [
+    {
+      "amount": 4200,
+      "destination": "Vendor Escrow"
+    }
+  ],
+  "activity_output": {
+    "confirmationId": "tx-demo-001",
+    "destination": "Vendor Escrow",
+    "status": "sent"
+  },
+  "activity_type": "transferFunds",
+  "attempt": 1,
+  "event_type": "ActivityCompleted",
+  "run_id": "run-example-001",
+  "source": "workflow-telemetry",
+  "span_count": 0,
+  "status": "completed",
+  "task_queue": "mastra",
+  "timestamp": "2026-03-03T12:00:03.000Z",
+  "workflow_id": "governed-transfer-workflow",
+  "workflow_type": "governed-transfer-workflow"
+}

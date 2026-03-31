@@ -1,0 +1,14 @@
+{
+  "event_type": "SignalReceived",
+  "run_id": "run-example-001",
+  "signal_args": {
+    "approved": true,
+    "approvedBy": "operator@example.com"
+  },
+  "signal_name": "resume",
+  "source": "workflow-telemetry",
+  "task_queue": "mastra",
+  "timestamp": "2026-03-03T12:00:02.000Z",
+  "workflow_id": "governed-transfer-workflow",
+  "workflow_type": "governed-transfer-workflow"
+}

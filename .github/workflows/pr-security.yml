@@ -1,0 +1,137 @@
+name: PR Security
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+concurrency:
+  group: pr-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: "8.30.0"
+
+jobs:
+  trivy-fs:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Trivy
+        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+        with:
+          cache: true
+          version: v0.69.2
+
+
+      - name: Run Trivy filesystem scan for console output
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --scanners vuln,misconfig \
+            --vuln-type os,library \
+            --ignore-unfixed \
+            --severity HIGH,CRITICAL \
+            --include-dev-deps \
+            --format table \
+            --exit-code 0
+
+      - name: Run Trivy filesystem scan for SARIF
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --scanners vuln,misconfig \
+            --vuln-type os,library \
+            --ignore-unfixed \
+            --severity HIGH,CRITICAL \
+            --include-dev-deps \
+            --format sarif \
+            --output trivy-fs-results.sarif \
+            --exit-code 0
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-fs
+
+      - name: Upload Trivy SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-fs-results
+          path: trivy-fs-results.sarif
+          if-no-files-found: error
+
+  gitleaks:
+    name: Gitleaks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" -o "${archive}"
+          tar -xzf "${archive}" gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run Gitleaks SARIF scan
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --report-format sarif \
+            --report-path gitleaks-results.sarif \
+            --redact
+
+      - name: Upload Gitleaks SARIF to GitHub Security
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: gitleaks-results.sarif
+          category: gitleaks
+
+      - name: Upload Gitleaks SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-results
+          path: gitleaks-results.sarif
+          if-no-files-found: error

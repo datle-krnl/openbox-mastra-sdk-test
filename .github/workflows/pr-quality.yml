@@ -1,0 +1,171 @@
+name: PR Quality
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - edited
+      - ready_for_review
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "24.10.0"
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+  CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+  GITLEAKS_VERSION: "8.30.0"
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run CI validation
+        run: npm run ci:check
+
+      - name: Verify package tarball
+        run: npm run pack:check
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: error
+
+      - name: Upload coverage to Codecov
+        if: ${{ env.CODECOV_TOKEN != '' }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/lcov.info
+          flags: unit
+          name: pr-quality
+          fail_ci_if_error: true
+          verbose: true
+          token: ${{ env.CODECOV_TOKEN }}
+
+  sonarqube:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    needs:
+      - quality
+
+    steps:
+      - name: Skip when SonarQube secrets are not configured
+        if: ${{ env.SONAR_TOKEN == '' || env.SONAR_HOST_URL == '' }}
+        run: echo "Skipping SonarQube because SONAR_TOKEN or SONAR_HOST_URL is not configured."
+
+      - name: Checkout repository
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download coverage report
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-lcov
+          path: coverage
+
+      - name: Set up Trivy
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: aquasecurity/setup-trivy@e07451d2e059ed86c2870430ea286b3a9e0bf241
+        with:
+          cache: true
+          version: v0.69.2
+
+      - name: Run Trivy SARIF scan for SonarQube import
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy fs . \
+            --scanners vuln,misconfig \
+            --vuln-type os,library \
+            --ignore-unfixed \
+            --severity HIGH,CRITICAL \
+            --include-dev-deps \
+            --format sarif \
+            --output trivy-sonar-results.sarif \
+            --exit-code 0
+
+      - name: Install Gitleaks for SonarQube import
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}" -o "${archive}"
+          tar -xzf "${archive}" gitleaks
+          chmod +x gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Run Gitleaks SARIF scan for SonarQube import
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          gitleaks detect \
+            --source . \
+            --config .gitleaks.toml \
+            --report-format sarif \
+            --report-path gitleaks-sonar-results.sarif \
+            --redact
+
+      - name: Set up Java
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache SonarQube packages
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: SonarQube scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != '' }}
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.sarifReportPaths=trivy-sonar-results.sarif,gitleaks-sonar-results.sarif

@@ -1,0 +1,12 @@
+{
+  "openbox": {
+    "activityId": "governed-transfer-workflow:prepare-transfer-step",
+    "activityType": "prepareTransferStep",
+    "approvalId": "approval-demo-001",
+    "reason": "Operator approval required for high-value transfer",
+    "requestedAt": "2026-03-03T12:00:01.000Z",
+    "runId": "run-example-001",
+    "workflowId": "governed-transfer-workflow",
+    "workflowType": "governed-transfer-workflow"
+  }
+}

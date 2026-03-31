@@ -1,0 +1,11 @@
+{
+  "guardrails_result": {
+    "input_type": "activity_input",
+    "redacted_input": {
+      "accountNumber": "[redacted]",
+      "destination": "Vendor Escrow"
+    },
+    "validation_passed": true
+  },
+  "verdict": "allow"
+}
