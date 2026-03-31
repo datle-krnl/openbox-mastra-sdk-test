@@ -51,9 +51,6 @@ jobs:
       - name: Run CI validation
         run: npm run ci:check
 
-      - name: Verify package tarball
-        run: npm run pack:check
-
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
@@ -71,6 +68,9 @@ jobs:
           fail_ci_if_error: true
           verbose: true
           token: ${{ env.CODECOV_TOKEN }}
+
+      - name: Verify package tarball
+        run: npm run pack:check
 
   sonarqube:
     name: SonarQube
